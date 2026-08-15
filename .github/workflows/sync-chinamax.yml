@@ -1,0 +1,135 @@
+name: Sync ChinaMax
+
+on:
+  # 每天北京时间 04:20 自动检查
+  schedule:
+    - cron: "20 20 * * *"
+
+  # 允许手动运行
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # 获取自己的仓库
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # 下载并检查 ChinaMax
+      - name: Check and update ChinaMax.list
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_URL="https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax.list"
+          TARGET_FILE="ChinaMax.list"
+          TEMP_FILE="ChinaMax.list.tmp"
+
+          echo "======================================"
+          echo "开始检查 ChinaMax.list"
+          echo "======================================"
+
+          # 下载上游文件
+          echo "正在下载："
+          echo "$SOURCE_URL"
+
+          HTTP_CODE=$(curl \
+            -L \
+            -sS \
+            -o "$TEMP_FILE" \
+            -w "%{http_code}" \
+            --connect-timeout 15 \
+            --max-time 60 \
+            "$SOURCE_URL")
+
+          echo "HTTP 状态码：$HTTP_CODE"
+
+          # HTTP 非 200
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ 上游文件无法正常获取"
+            echo "❗ 保留当前 ChinaMax.list，不进行更新"
+            rm -f "$TEMP_FILE"
+            exit 0
+          fi
+
+          # 文件不存在
+          if [ ! -f "$TEMP_FILE" ]; then
+            echo "❌ 下载文件不存在"
+            echo "❗ 保留当前 ChinaMax.list"
+            exit 0
+          fi
+
+          # 检查文件大小
+          FILE_SIZE=$(wc -c < "$TEMP_FILE")
+
+          echo "下载文件大小：${FILE_SIZE} bytes"
+
+          # 防止上游变成空文件或异常小文件
+          if [ "$FILE_SIZE" -lt 1000 ]; then
+            echo "❌ 上游文件异常：文件过小"
+            echo "❗ 保留当前 ChinaMax.list，不进行更新"
+            rm -f "$TEMP_FILE"
+            exit 0
+          fi
+
+          # 检查是否包含 Clash 规则
+          RULE_COUNT=$(grep -Ec \
+            '^(DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD|IP-CIDR|IP-CIDR6|PROCESS-NAME|DST-PORT|SRC-IP-CIDR),' \
+            "$TEMP_FILE" || true)
+
+          echo "检测到规则数量：$RULE_COUNT"
+
+          # 防止下载到 HTML 错误页面或异常文件
+          if [ "$RULE_COUNT" -lt 100 ]; then
+            echo "❌ 上游文件规则数量异常"
+            echo "❗ 可能是错误页面、空规则或格式发生重大变化"
+            echo "❗ 保留当前 ChinaMax.list"
+            rm -f "$TEMP_FILE"
+            exit 0
+          fi
+
+          # 检查通过
+          echo "✅ 上游 ChinaMax.list 检查通过"
+
+          # 如果内容完全一样，不更新
+          if [ -f "$TARGET_FILE" ] && cmp -s "$TEMP_FILE" "$TARGET_FILE"; then
+            echo "ℹ️ ChinaMax.list 没有变化"
+            rm -f "$TEMP_FILE"
+            exit 0
+          fi
+
+          # 替换旧文件
+          mv "$TEMP_FILE" "$TARGET_FILE"
+
+          echo "======================================"
+          echo "✅ ChinaMax.list 更新成功"
+          echo "文件大小：${FILE_SIZE} bytes"
+          echo "规则数量：${RULE_COUNT}"
+          echo "======================================"
+
+      # 提交更新
+      - name: Commit changes
+        shell: bash
+        run: |
+          set -e
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add ChinaMax.list
+
+          # 没有变化就不提交
+          if git diff --cached --quiet; then
+            echo "没有新的变化，不需要提交"
+            exit 0
+          fi
+
+          git commit -m "Update ChinaMax.list"
+
+          git push
