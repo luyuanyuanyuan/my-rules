@@ -1,0 +1,13 @@
+# DOMAIN永久直连 DOMAIN-SUFFIX整个域名及其子域名
+#apple
+DOMAIN-SUFFIX,apple.com
+#steam下载
+DOMAIN-SUFFIX,steamcontent.com
+#epic下载
+DOMAIN,download.epicgames.com
+DOMAIN,download2.epicgames.com
+DOMAIN,download3.epicgames.com
+DOMAIN,download4.epicgames.com
+DOMAIN,fastly-download.epicgames.com
+DOMAIN,epicgames-download1.akamaized.net
+DOMAIN,egdownload.fastly-edge.com
